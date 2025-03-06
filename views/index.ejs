@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Route Tracking</title>
+    
+    <!-- ✅ Google Maps API with Places & Geocoding -->
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyByfPcZGmnpwnETBKvDcXFTPRvPDVtthMA&libraries=geometry,places&language=en&callback=initMap" async defer></script>
+    
+    <style>
+        #map { height: 50vh; width: 50%; }
+        #controls { padding: 10px; font-size: 18px; display: flex; gap: 10px; flex-wrap: wrap; }
+        input { width: 250px; padding: 8px; font-size: 16px; }
+        button { padding: 8px 15px; font-size: 16px; cursor: pointer; }
+    </style>
+
+    <script>
+        let map, userMarker, sourceMarker, destinationMarker;
+        let directionsService, directionsRenderer;
+        let sourceLocation = null, destinationLocation = null;
+        let autocompleteSource, autocompleteDestination;
+
+        function initMap() {
+            map = new google.maps.Map(document.getElementById("map"), {
+                center: { lat: 22.5726, lng: 88.3639 }, // Default Kolkata
+                zoom: 14
+            });
+
+            directionsService = new google.maps.DirectionsService();
+            directionsRenderer = new google.maps.DirectionsRenderer();
+            directionsRenderer.setMap(map);
+
+            // ✅ Autocomplete for Source & Destination
+            autocompleteSource = new google.maps.places.Autocomplete(document.getElementById("source"));
+            autocompleteSource.setFields(["geometry"]);
+            autocompleteSource.addListener("place_changed", () => {
+                let place = autocompleteSource.getPlace();
+                if (!place.geometry) return alert("Please select a valid source location.");
+                sourceLocation = place.geometry.location;
+                updateSourceMarker();
+            });
+
+            autocompleteDestination = new google.maps.places.Autocomplete(document.getElementById("destination"));
+            autocompleteDestination.setFields(["geometry"]);
+            autocompleteDestination.addListener("place_changed", () => {
+                let place = autocompleteDestination.getPlace();
+                if (!place.geometry) return alert("Please select a valid destination.");
+                destinationLocation = place.geometry.location;
+                updateDestinationMarker();
+            });
+        }
+
+        function useCurrentLocation() {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition((position) => {
+                    sourceLocation = {
+                        lat: position.coords.latitude,
+                        lng: position.coords.longitude
+                    };
+                    updateSourceMarker();
+                    getAddressFromLatLng(sourceLocation.lat, sourceLocation.lng);
+                }, showError, { enableHighAccuracy: true });
+            } else {
+                alert("Geolocation is not supported by your browser.");
+            }
+        }
+
+        function getAddressFromLatLng(lat, lng) {
+            let geocoder = new google.maps.Geocoder();
+            let latlng = new google.maps.LatLng(lat, lng);
+
+            geocoder.geocode({ location: latlng }, (results, status) => {
+                if (status === "OK" && results[0]) {
+                    document.getElementById("source").value = results[0].formatted_address;
+                } else {
+                    console.error("Geocoder failed: " + status);
+                }
+            });
+        }
+
+        function updateSourceMarker() {
+            if (sourceMarker) sourceMarker.setMap(null);
+            sourceMarker = new google.maps.Marker({
+                position: sourceLocation,
+                map: map,
+                title: "Source",
+                icon: "http://maps.google.com/mapfiles/ms/icons/blue-dot.png"
+            });
+            map.setCenter(sourceLocation);
+            if (destinationLocation) calculateRoute();
+        }
+
+        function updateDestinationMarker() {
+            if (destinationMarker) destinationMarker.setMap(null);
+            destinationMarker = new google.maps.Marker({
+                position: destinationLocation,
+                map: map,
+                title: "Destination",
+                icon: "http://maps.google.com/mapfiles/ms/icons/red-dot.png"
+            });
+            if (sourceLocation) calculateRoute();
+        }
+
+        function calculateRoute() {
+            if (!sourceLocation || !destinationLocation) return;
+
+            let request = {
+                origin: sourceLocation,
+                destination: destinationLocation,
+                travelMode: google.maps.TravelMode.DRIVING
+            };
+
+            directionsService.route(request, (result, status) => {
+                if (status === "OK") {
+                    directionsRenderer.setDirections(result);
+                    let distance = google.maps.geometry.spherical.computeDistanceBetween(
+                        new google.maps.LatLng(sourceLocation),
+                        new google.maps.LatLng(destinationLocation)
+                    ) / 1000; // Convert meters to KM
+                    
+                    let duration = result.routes[0].legs[0].duration.text;
+
+                    document.getElementById("info").innerHTML = `📍 Distance: <b>${distance.toFixed(2)} km</b> | 🕒 Estimated Time: <b>${duration}</b>`;
+                } else {
+                    alert("Route calculation failed!");
+                }
+            });
+        }
+
+        function showError(error) {
+            console.error("Location Error:", error);
+            alert("Enable GPS & Location Permissions!");
+        }
+    </script>
+</head>
+<body>
+    <h1>Live Route Tracking</h1>
+    <div id="controls">
+        <input type="text" id="source" placeholder="Enter Source Location">
+        <button onclick="useCurrentLocation()">Use My Current Location</button>
+        <input type="text" id="destination" placeholder="Enter Destination">
+        <button onclick="calculateRoute()">Set Destination</button>
+    </div>
+    <div id="map"></div>
+    <div id="info">Enter source & destination to see route & distance.</div>
+</body>
+</html>
